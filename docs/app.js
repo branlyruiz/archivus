@@ -167,6 +167,47 @@ function openLocation(id) {
   heading.focus();
 }
 
+const inventorySurface = document.querySelector("main");
+let backSwipe = null;
+
+inventorySurface.addEventListener("touchstart", (event) => {
+  backSwipe = null;
+  if (!current || event.touches.length !== 1 || dialog.open || !folderForm.hidden || !searchPanel.hidden) return;
+  const touch = event.touches[0];
+  if (touch.clientX > Math.min(96, window.innerWidth / 4)) return;
+  backSwipe = { x: touch.clientX, y: touch.clientY, location: current };
+}, { passive: true });
+
+inventorySurface.addEventListener("touchmove", (event) => {
+  if (!backSwipe) return;
+  if (event.touches.length !== 1) {
+    backSwipe = null;
+    return;
+  }
+  const touch = event.touches[0];
+  const dx = touch.clientX - backSwipe.x;
+  const dy = Math.abs(touch.clientY - backSwipe.y);
+  if (dx < -12 || (dy > 12 && dy >= dx)) {
+    backSwipe = null;
+  } else if (dx > 18 && dx > dy * 1.5 && event.cancelable) {
+    event.preventDefault();
+  }
+}, { passive: false });
+
+inventorySurface.addEventListener("touchend", (event) => {
+  const start = backSwipe;
+  backSwipe = null;
+  if (!start || start.location !== current || event.touches.length) return;
+  const touch = event.changedTouches[0];
+  const dx = touch.clientX - start.x;
+  const dy = Math.abs(touch.clientY - start.y);
+  if (dx < 64 || dx <= dy * 1.5 || !event.cancelable) return;
+  event.preventDefault();
+  openLocation(items.get(current)?.parent ?? null);
+}, { passive: false });
+
+inventorySurface.addEventListener("touchcancel", () => { backSwipe = null; }, { passive: true });
+
 function card(item, searching) {
   const article = element("article", null, "card");
   const color = item.kind === "disk" ? getDiskColor(item.color) : null;
