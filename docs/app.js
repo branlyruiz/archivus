@@ -2,6 +2,9 @@ import { supabaseUrl, publishableKey } from "./config.js";
 
 const byId = (id) => document.getElementById(id);
 const search = byId("search");
+const searchPanel = byId("search-panel");
+const searchToggle = byId("dock-search");
+const dockHome = byId("dock-home");
 const list = byId("list");
 const path = byId("path");
 const add = byId("add");
@@ -120,10 +123,17 @@ function branch(id) {
   return descendants;
 }
 
+function setSearch(open) {
+  searchPanel.hidden = !open;
+  searchToggle.setAttribute("aria-expanded", String(open));
+  if (!open) search.value = "";
+  render();
+  if (open) search.focus();
+}
+
 function openLocation(id) {
   current = id;
-  search.value = "";
-  render();
+  setSearch(false);
   const heading = byId("heading");
   heading.tabIndex = -1;
   heading.focus();
@@ -169,7 +179,9 @@ function render() {
     ? [location.technology, location.interface, location.capacity].filter(Boolean).join(" · ")
     : location ? "" : "Organiza y encuentra el material de tu equipo.";
   byId("summary").hidden = !byId("summary").textContent;
-  add.textContent = current ? "＋ Nueva carpeta" : "＋ Nuevo disco";
+  add.setAttribute("aria-label", current ? "Nueva carpeta" : "Nuevo disco");
+  if (!current && searchPanel.hidden) dockHome.setAttribute("aria-current", "page");
+  else dockHome.removeAttribute("aria-current");
   path.hidden = !current || Boolean(query);
   path.replaceChildren();
   if (!path.hidden) {
@@ -326,6 +338,14 @@ dialog.addEventListener("close", () => {
 byId("close").addEventListener("click", () => dialog.close());
 byId("cancel").addEventListener("click", () => dialog.close());
 byId("home").addEventListener("click", () => openLocation(null));
+dockHome.addEventListener("click", () => openLocation(null));
+searchToggle.addEventListener("click", () => setSearch(searchPanel.hidden));
+search.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  setSearch(false);
+  searchToggle.focus();
+});
 add.addEventListener("click", () => showEdit());
 search.addEventListener("input", render);
 window.addEventListener("online", refresh);
