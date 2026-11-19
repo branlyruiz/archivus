@@ -1,5 +1,5 @@
 const prefix = "archivus-shell-";
-const cacheName = prefix + "1";
+const cacheName = prefix + "2";
 const files = ["./", "./style.css", "./app.js", "./config.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(cacheName).then((cache) =>
