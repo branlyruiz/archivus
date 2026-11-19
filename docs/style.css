@@ -51,6 +51,16 @@ h2{font-size:1.12rem;letter-spacing:-.025em;margin:0}
 #count,.meta,#notice{color:var(--muted);font-size:.88rem}
 #list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,265px),1fr));gap:12px}
 #list.rows{grid-template-columns:1fr}
+#folder-composer{margin-top:12px}
+#folder-add{min-width:48px;font-size:1.4rem;line-height:1}
+#folder-form{display:flex;align-items:center;gap:8px;width:100%;transform-origin:left center;animation:expand-folder .2s ease-out}
+#folder-name{min-width:0;flex:1;height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+#folder-cancel{width:44px;padding:0;font-size:1.25rem}
+#folder-error{margin:8px 0 0;color:var(--danger)}
+.keyboard-open .dock{visibility:hidden}
+.keyboard-open main{padding-bottom:calc(32px + var(--keyboard-space))}
+.keyboard-open dialog{position:fixed;inset-block-end:calc(var(--keyboard-inset,0px) + 10px);margin:auto auto 0}
+@keyframes expand-folder{from{clip-path:inset(0 calc(100% - 48px) 0 0 round 12px)}to{clip-path:inset(0)}}
 .card{min-width:0;background:var(--panel);border:1px solid var(--border);border-radius:18px;box-shadow:0 3px 12px #05141d08;display:flex;align-items:center;gap:4px;padding:4px 10px 4px 4px;transition:border-color .16s}
 .card:hover,.card:focus-within{border-color:var(--accent)}
 .open{padding:12px 8px 12px 12px;background:none;border:0;text-align:left;display:flex;align-items:center;gap:12px;flex:1;min-width:0}
@@ -60,11 +70,11 @@ h2{font-size:1.12rem;letter-spacing:-.025em;margin:0}
 .meta{margin-top:4px}
 .more{width:44px;padding:4px;background:none;border-color:transparent;color:var(--muted);font-weight:800}
 .empty{min-height:128px;display:grid;place-items:center;text-align:center;padding:20px;margin:0;border:1px dashed var(--border);border-radius:16px;color:var(--muted)}
-dialog{width:min(470px,100% - 28px);max-height:90dvh;border:1px solid var(--border);border-radius:20px;padding:0;background:var(--panel);color:var(--text)}
+dialog{width:min(470px,100% - 28px);max-height:min(90dvh,calc(var(--visible-height,100dvh) - 24px));border:1px solid var(--border);border-radius:20px;padding:0;background:var(--panel);color:var(--text)}
 dialog[open]{animation:appear .16s ease-out}
 dialog::backdrop{background:#05141daa}
 @keyframes appear{from{opacity:0;transform:translateY(8px)}}
-form{padding:20px}
+#editor{padding:20px}
 .dialog-head,.dialog-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .dialog-head h2{font-size:1.35rem}
 #close{width:44px;padding:0;font-size:1.4rem}
@@ -84,5 +94,5 @@ form{padding:20px}
 .dock button.primary{width:54px;height:54px}
 .dock .primary svg{width:24px;height:24px}
 @keyframes dock-in{from{opacity:0;transform:translateY(12px) scale(.96)}}
-@media(max-width:520px){main{padding-top:18px}dialog{margin:auto auto max(10px,env(safe-area-inset-bottom));border-radius:20px}}
+@media(max-width:520px){main{padding-top:18px}dialog{position:fixed;inset-block-end:max(calc(var(--keyboard-inset,0px) + 10px),env(safe-area-inset-bottom));margin:auto auto 0}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}

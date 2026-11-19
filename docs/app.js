@@ -9,6 +9,13 @@ const list = byId("list");
 const path = byId("path");
 const add = byId("add");
 const sync = byId("sync");
+const folderComposer = byId("folder-composer");
+const folderAdd = byId("folder-add");
+const folderForm = byId("folder-form");
+const folderName = byId("folder-name");
+const folderSave = byId("folder-save");
+const folderCancel = byId("folder-cancel");
+const folderError = byId("folder-error");
 const dialog = document.querySelector("dialog");
 const form = byId("editor");
 const fields = byId("fields");
@@ -37,6 +44,8 @@ let refreshing = false;
 let saving = false;
 let operation = null;
 let focusAfterClose = null;
+let folderDraft = null;
+let savingFolder = false;
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -56,7 +65,8 @@ function setStatus(text, connected = false) {
   ready = connected;
   sync.dataset.ready = String(connected);
   if (sync.textContent !== text) sync.textContent = text;
-  add.disabled = !ready;
+  add.disabled = folderAdd.disabled = !ready || savingFolder;
+  folderSave.disabled = !ready || savingFolder;
   if (dialog.open && operation && !saving) save.disabled = !ready;
 }
 
@@ -87,7 +97,10 @@ function applySnapshot(next) {
   } catch {
     // The online inventory remains available when storage is full or disabled.
   }
-  if (current && !items.has(current)) current = null;
+  if (current && !items.has(current)) {
+    current = null;
+    closeFolderComposer();
+  }
   render();
 }
 
@@ -97,7 +110,7 @@ async function refresh() {
   try {
     // Always validate the first cached snapshot against the server, even after a restore.
     const next = await rpc("archivus_read", { known_revision: ready ? snapshot?.revision ?? -1 : -1 });
-    if (next && !ready && !saving && snapshot && next.revision < snapshot.revision) snapshot = null;
+    if (next && !ready && !saving && !savingFolder && snapshot && next.revision < snapshot.revision) snapshot = null;
     if (next) applySnapshot(next);
     setStatus("Sincronizado", true);
   } catch {
@@ -133,6 +146,7 @@ function setSearch(open) {
 }
 
 function openLocation(id) {
+  if (current !== id) closeFolderComposer();
   current = id;
   setSearch(false);
   const heading = byId("heading");
@@ -183,6 +197,7 @@ function render() {
   add.setAttribute("aria-label", current ? "Nueva carpeta" : "Nuevo disco");
   if (!current && searchPanel.hidden) dockHome.setAttribute("aria-current", "page");
   else dockHome.removeAttribute("aria-current");
+  folderComposer.hidden = !current || Boolean(query);
   path.hidden = !current || Boolean(query);
   path.replaceChildren();
   if (!path.hidden) {
@@ -203,9 +218,8 @@ function render() {
     : !snapshot ? "Esperando el inventario compartido."
       : query ? "No se encontraron coincidencias."
         : current ? "Esta ubicación aún no tiene carpetas." : "Agrega el primer disco del inventario.";
-  list.replaceChildren(...(results.length
-    ? results.map((item) => card(item, Boolean(query)))
-    : [element("p", emptyText, "empty")]));
+  const empty = folderComposer.hidden ? [element("p", emptyText, "empty")] : [];
+  list.replaceChildren(...(results.length ? results.map((item) => card(item, Boolean(query))) : empty));
   if (focusKey) list.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus();
 }
 
@@ -223,6 +237,7 @@ function showPanel(title, content, action, nextOperation) {
     dialog.showModal();
   }
   fields.querySelector("input,select,button")?.focus();
+  keepEditorVisible();
 }
 
 function field(label, control) {
@@ -314,6 +329,92 @@ function showActions(item) {
   showPanel(item.name, actions);
 }
 
+function openFolderComposer() {
+  if (!current || !ready || savingFolder) return;
+  if (!searchPanel.hidden) setSearch(false);
+  folderAdd.hidden = true;
+  folderForm.hidden = false;
+  folderName.focus();
+  requestAnimationFrame(keepEditorVisible);
+}
+
+function closeFolderComposer({ restoreFocus = false } = {}) {
+  folderDraft = null;
+  folderForm.reset();
+  folderForm.hidden = true;
+  folderAdd.hidden = false;
+  folderError.hidden = true;
+  if (restoreFocus) folderAdd.focus();
+}
+
+function keepEditorVisible() {
+  const viewport = window.visualViewport;
+  if (!viewport) return;
+  const heightDifference = Math.max(0, window.innerHeight - viewport.height);
+  const keyboard = heightDifference > 100 && viewport.scale === 1;
+  const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+  document.documentElement.classList.toggle("keyboard-open", keyboard);
+  document.documentElement.style.setProperty("--keyboard-space", `${keyboard ? heightDifference : 0}px`);
+  dialog.style.setProperty("--visible-height", `${viewport.height}px`);
+  dialog.style.setProperty("--keyboard-inset", `${inset}px`);
+  if (document.activeElement === folderName && !folderComposer.hidden) {
+    const formBottom = folderForm.getBoundingClientRect().bottom;
+    const overlap = formBottom - (viewport.offsetTop + viewport.height - 16);
+    if (overlap > 0) window.scrollBy(0, Math.ceil(overlap));
+  }
+}
+
+window.visualViewport?.addEventListener("resize", keepEditorVisible);
+window.visualViewport?.addEventListener("scroll", keepEditorVisible);
+folderAdd.addEventListener("click", openFolderComposer);
+folderCancel.addEventListener("click", () => closeFolderComposer({ restoreFocus: true }));
+folderName.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || savingFolder) return;
+  event.preventDefault();
+  closeFolderComposer({ restoreFocus: true });
+});
+folderForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!current || savingFolder || !ready) return;
+  const name = folderName.value.trim();
+  if (!name) {
+    folderError.textContent = "Escribe el nombre de la carpeta.";
+    folderError.hidden = false;
+    folderName.focus();
+    return;
+  }
+  if (folderDraft?.name !== name) {
+    folderDraft = { action: "create", kind: "folder", id: crypto.randomUUID(), parent: current, name };
+  }
+  const draft = folderDraft;
+  savingFolder = true;
+  folderSave.disabled = folderCancel.disabled = add.disabled = true;
+  folderName.readOnly = true;
+  folderError.hidden = true;
+  try {
+    applySnapshot(await rpc("archivus_write", { change: draft }));
+    if (folderDraft === draft) {
+      const focused = folderForm.contains(document.activeElement);
+      closeFolderComposer();
+      if (focused && !folderComposer.hidden && ready) {
+        folderAdd.disabled = false;
+        folderAdd.focus();
+      }
+      byId("notice").textContent = "Carpeta agregada.";
+    }
+  } catch (failure) {
+    if (folderDraft === draft) {
+      folderError.textContent = failure.message;
+      folderError.hidden = false;
+    }
+    void refresh();
+  } finally {
+    savingFolder = false;
+    folderSave.disabled = folderAdd.disabled = add.disabled = !ready;
+    folderCancel.disabled = folderName.readOnly = false;
+  }
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!operation || saving || !ready) return;
@@ -355,7 +456,7 @@ search.addEventListener("keydown", (event) => {
   setSearch(false);
   searchToggle.focus();
 });
-add.addEventListener("click", () => showEdit());
+add.addEventListener("click", () => current ? openFolderComposer() : showEdit());
 search.addEventListener("input", render);
 window.addEventListener("online", refresh);
 window.addEventListener("offline", () => setStatus(snapshot ? "Sin conexión · copia local" : "Sin conexión"));
