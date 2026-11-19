@@ -158,19 +158,49 @@ function setSearch(open) {
   if (open) search.focus();
 }
 
+let returnPosition = null;
+
+function restoreReturnPosition(id, itemId) {
+  const position = { id, itemId };
+  returnPosition = position;
+  const restore = (center = false) => {
+    if (returnPosition !== position || current !== id || !searchPanel.hidden || dialog.open) return;
+    const card = list.querySelector(`[data-focus="open-${CSS.escape(itemId)}"]`);
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const top = viewport?.offsetTop ?? 0;
+    const height = viewport?.height ?? window.innerHeight;
+    const visible = rect.top >= top + 12 && rect.bottom <= top + height - 88;
+    if (center || !visible) {
+      const target = window.scrollY + rect.top + rect.height / 2 - top - (height - 64) / 2;
+      window.scrollTo({ top: target, behavior: "instant" });
+    }
+  };
+  requestAnimationFrame(() => requestAnimationFrame(() => restore(true)));
+  // Mobile scrolling can settle after touchend and after the first paint.
+  setTimeout(restore, 180);
+  setTimeout(restore, 480);
+}
+
 function openLocation(id, returnTo = null) {
+  returnPosition = null;
   if (current !== id) closeFolderComposer();
   current = id;
   setSearch(false);
   const originCard = returnTo && list.querySelector(`[data-focus="open-${CSS.escape(returnTo)}"]`);
   if (originCard) {
     originCard.focus({ preventScroll: true });
-    originCard.scrollIntoView({ block: "center", inline: "nearest" });
+    restoreReturnPosition(id, returnTo);
     return;
   }
   const heading = byId("heading");
   heading.tabIndex = -1;
   heading.focus();
+}
+
+for (const input of ["touchstart", "wheel", "pointerdown", "keydown"]) {
+  window.addEventListener(input, () => { returnPosition = null; }, { capture: true, passive: true });
 }
 
 const inventorySurface = document.querySelector("main");
@@ -286,7 +316,7 @@ function render() {
         : current ? "Esta ubicación aún no tiene carpetas." : "Agrega el primer disco del inventario.";
   const empty = folderComposer.hidden ? [element("p", emptyText, "empty")] : [];
   list.replaceChildren(...(results.length ? results.map((item) => card(item, Boolean(query))) : empty));
-  if (focusKey) list.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus();
+  if (focusKey) list.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
 }
 
 function showPanel(title, content, action, nextOperation) {
