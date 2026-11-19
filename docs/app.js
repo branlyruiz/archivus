@@ -294,19 +294,7 @@ function render() {
   if (!current && searchPanel.hidden) dockHome.setAttribute("aria-current", "page");
   else dockHome.removeAttribute("aria-current");
   folderComposer.hidden = !current || Boolean(query);
-  path.hidden = !current || Boolean(query);
-  path.replaceChildren();
-  if (!path.hidden) {
-    path.append(button("Discos W Agencia", () => openLocation(null)));
-    for (const item of ancestors(current)) {
-      path.append(element("span", "›"));
-      const segment = item.id === current
-        ? element("span", item.name)
-        : button(item.name, () => openLocation(item.id));
-      if (item.id === current) segment.setAttribute("aria-current", "location");
-      path.append(segment);
-    }
-  }
+  renderPath(Boolean(query));
   byId("section-title").textContent = query ? "Resultados" : current ? "Carpetas" : "Tus discos";
   byId("count").textContent = snapshot ? String(results.length) : "";
   list.classList.toggle("rows", Boolean(query || current || !results.length));
@@ -317,6 +305,45 @@ function render() {
   const empty = folderComposer.hidden ? [element("p", emptyText, "empty")] : [];
   list.replaceChildren(...(results.length ? results.map((item) => card(item, Boolean(query))) : empty));
   if (focusKey) list.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
+}
+
+function renderPath(searching) {
+  path.hidden = !current || searching;
+  path.replaceChildren();
+  if (path.hidden) return;
+
+  const trail = ancestors(current);
+  const parent = trail.at(-2);
+  const home = button(null, () => openLocation(null, trail[0].id), "path-icon");
+  home.setAttribute("aria-label", "Volver a Discos W Agencia");
+  home.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>';
+  path.append(home);
+
+  function appendStep(step) {
+    const divider = element("span", "›", "path-separator");
+    divider.setAttribute("aria-hidden", "true");
+    path.append(divider, step);
+  }
+
+  if (trail.length > 2) {
+    const more = button("···", () => {
+      const destinations = trail.slice(0, -2).map((item, index) => button(item.name, () => {
+        focusAfterClose = null;
+        dialog.close();
+        openLocation(item.id, trail[index + 1].id);
+      }, "action path-destination"));
+      showPanel("Niveles de la ruta", destinations);
+    }, "path-icon path-more");
+    more.setAttribute("aria-label", "Ver niveles intermedios");
+    more.setAttribute("aria-haspopup", "dialog");
+    appendStep(more);
+  }
+
+  if (parent) {
+    const previous = button(parent.name, () => openLocation(parent.id, trail.at(-1).id), "path-parent");
+    previous.setAttribute("aria-label", `Volver a ${parent.name}`);
+    appendStep(previous);
+  }
 }
 
 function showPanel(title, content, action, nextOperation) {
@@ -558,6 +585,7 @@ form.addEventListener("submit", async (event) => {
 
 dialog.addEventListener("cancel", (event) => { if (saving) event.preventDefault(); });
 dialog.addEventListener("close", () => {
+  if (!focusAfterClose) return;
   const key = focusAfterClose?.dataset.focus;
   const target = focusAfterClose?.isConnected ? focusAfterClose
     : key && list.querySelector(`[data-focus="${CSS.escape(key)}"]`);
