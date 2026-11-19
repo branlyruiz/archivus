@@ -208,7 +208,7 @@ let backSwipe = null;
 
 inventorySurface.addEventListener("touchstart", (event) => {
   backSwipe = null;
-  if (!current || event.touches.length !== 1 || dialog.open || !folderForm.hidden || !searchPanel.hidden) return;
+  if (!current || event.touches.length !== 1 || dialog.open || !folderForm.hidden || !searchPanel.hidden || path.contains(event.target)) return;
   const touch = event.touches[0];
   if (touch.clientX > Math.min(96, window.innerWidth / 4)) return;
   backSwipe = { x: touch.clientX, y: touch.clientY, location: current };
@@ -308,42 +308,25 @@ function render() {
 }
 
 function renderPath(searching) {
+  const previousLocation = path.dataset.location;
+  const previousScroll = path.scrollLeft;
   path.hidden = !current || searching;
   path.replaceChildren();
   if (path.hidden) return;
 
   const trail = ancestors(current);
-  const parent = trail.at(-2);
-  const home = button(null, () => openLocation(null, trail[0].id), "path-icon");
+  const home = button("Discos", () => openLocation(null, trail[0].id), "path-step");
   home.setAttribute("aria-label", "Volver a Discos W Agencia");
-  home.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>';
   path.append(home);
-
-  function appendStep(step) {
+  for (const [index, item] of trail.slice(0, -1).entries()) {
     const divider = element("span", "›", "path-separator");
     divider.setAttribute("aria-hidden", "true");
+    const step = button(item.name, () => openLocation(item.id, trail[index + 1].id), "path-step");
+    step.setAttribute("aria-label", `Volver a ${item.name}`);
     path.append(divider, step);
   }
-
-  if (trail.length > 2) {
-    const more = button("···", () => {
-      const destinations = trail.slice(0, -2).map((item, index) => button(item.name, () => {
-        focusAfterClose = null;
-        dialog.close();
-        openLocation(item.id, trail[index + 1].id);
-      }, "action path-destination"));
-      showPanel("Niveles de la ruta", destinations);
-    }, "path-icon path-more");
-    more.setAttribute("aria-label", "Ver niveles intermedios");
-    more.setAttribute("aria-haspopup", "dialog");
-    appendStep(more);
-  }
-
-  if (parent) {
-    const previous = button(parent.name, () => openLocation(parent.id, trail.at(-1).id), "path-parent");
-    previous.setAttribute("aria-label", `Volver a ${parent.name}`);
-    appendStep(previous);
-  }
+  path.scrollLeft = previousLocation === current ? previousScroll : path.scrollWidth;
+  path.dataset.location = current;
 }
 
 function showPanel(title, content, action, nextOperation) {

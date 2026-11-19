@@ -44,15 +44,13 @@ h1{font-size:clamp(2.45rem,7.5vw,4.75rem);line-height:1.01;letter-spacing:-.075e
 .search input:focus-visible{outline-offset:-2px}
 .primary{background:var(--accent);color:var(--on-accent);font-weight:760;border-color:transparent}
 .primary:hover:enabled{background:var(--accent-hover)}
-#path{margin:8px 0 0;display:flex;align-items:center;gap:2px;min-width:0;color:var(--muted);background:var(--panel);border-radius:12px;box-shadow:inset 0 0 0 1px var(--border)}
-#path button{background:none;border:0;border-radius:8px;color:inherit}
-#path button:hover,#path button:active{background:var(--accent-soft);color:var(--danger)}
-#path .path-icon{width:44px;flex:none;display:grid;place-items:center;padding:0}
-.path-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round}
-.path-more{font-weight:800;letter-spacing:2px}
-.path-separator{color:var(--muted);flex:none}
-#path .path-parent{flex:1;min-width:0;padding:0 10px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.875rem;font-weight:680}
+#path{margin:8px 0 0;display:flex;align-items:center;gap:7px;color:var(--muted);overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin}
+#path .path-step{flex:none;padding:0 2px;border:0;border-radius:4px;background:none;color:inherit;white-space:nowrap;font-size:.875rem;font-weight:680}
+#path .path-step:hover,#path .path-step:active{color:var(--danger);text-decoration:underline}
+#path .path-step:focus-visible{outline-offset:-2px}
+.path-separator{flex:none}
 #path:not([hidden]) + .section{margin-top:8px}
+.section{margin-top:8px}
 .path-destination{overflow-wrap:anywhere}
 .section{margin-top:24px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 h2{font-size:1.12rem;letter-spacing:-.025em;margin:0}
