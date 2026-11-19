@@ -64,6 +64,9 @@ h2{font-size:1.12rem;letter-spacing:-.025em;margin:0}
 .card{min-width:0;background:var(--panel);border:1px solid var(--border);border-radius:18px;box-shadow:0 3px 12px #05141d08;display:flex;align-items:center;gap:4px;padding:4px 10px 4px 4px;transition:border-color .16s}
 .card:hover,.card:focus-within{border-color:var(--accent)}
 .open{padding:12px 8px 12px 12px;background:none;border:0;text-align:left;display:flex;align-items:center;gap:12px;flex:1;min-width:0}
+.open-folder{flex:0 0 auto;justify-content:center;width:52px;padding:6px 4px}
+.rename-folder{flex:1;min-width:0;background:none;border:0;text-align:left;padding:10px 4px}
+.rename-folder:hover .card-name{color:var(--danger)}
 .glyph{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:11px;color:var(--accent);background:var(--accent-soft)}
 .card-name,.meta{display:block;overflow-wrap:anywhere}
 .card-name{font-weight:720;line-height:1.3}

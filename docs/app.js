@@ -169,11 +169,25 @@ function card(item, searching) {
       ? ancestors(item.parent).map(({ name }) => name).join(" › ")
       : `${folderCount} ${folderCount === 1 ? "carpeta" : "carpetas"}`;
   copy.append(element("span", item.name, "card-name"), element("span", caption, "meta"));
-  open.append(glyph, copy);
+  open.append(glyph);
+  let rename;
+  if (item.kind === "folder") {
+    open.classList.add("open-folder");
+    open.setAttribute("aria-label", `Abrir carpeta ${item.name}`);
+    rename = button(null, () => showEdit(item), "rename-folder");
+    rename.dataset.focus = `rename-${item.id}`;
+    rename.setAttribute("aria-label", `Cambiar nombre de ${item.name}`);
+    rename.setAttribute("aria-haspopup", "dialog");
+    rename.append(copy);
+  } else {
+    open.append(copy);
+  }
   const more = button("•••", () => showActions(item), "more");
   more.dataset.focus = `more-${item.id}`;
   more.setAttribute("aria-label", `Acciones de ${item.name}`);
-  article.append(open, more);
+  article.append(open);
+  if (rename) article.append(rename);
+  article.append(more);
   return article;
 }
 
@@ -284,6 +298,7 @@ function showEdit(item) {
       kind, parent: item?.parent ?? current, version: item?.version,
       interface: item?.interface,
     });
+  if (item?.kind === "folder") fields.querySelector("input").select();
 }
 
 function showMove(item) {
