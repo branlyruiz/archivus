@@ -61,10 +61,10 @@ h2{font-size:1.12rem;letter-spacing:-.025em;margin:0}
 .keyboard-open main{padding-bottom:calc(32px + var(--keyboard-space))}
 .keyboard-open dialog{position:fixed;inset-block-end:calc(var(--keyboard-inset,0px) + 10px);margin:auto auto 0}
 @keyframes expand-folder{from{clip-path:inset(0 calc(100% - 48px) 0 0 round 12px)}to{clip-path:inset(0)}}
-.card{min-width:0;background:var(--panel);border:1px solid var(--border);border-radius:18px;box-shadow:0 3px 12px #05141d08;display:flex;align-items:center;gap:4px;padding:4px 10px 4px 4px;transition:border-color .16s}
+.card{min-width:0;background:var(--disk-tint,var(--panel));border:1px solid var(--border);border-radius:18px;box-shadow:0 3px 12px #05141d08;display:flex;align-items:center;gap:4px;padding:4px 10px 4px 4px;transition:border-color .16s}
 .card:hover,.card:focus-within{border-color:var(--accent)}
 .open{padding:12px 8px 12px 12px;background:none;border:0;text-align:left;display:flex;align-items:center;gap:12px;flex:1;min-width:0}
-.glyph{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:11px;color:var(--accent);background:var(--accent-soft)}
+.glyph{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:11px;color:var(--disk-icon,var(--accent));background:var(--disk-icon-background,var(--disk-tint,var(--accent-soft)))}
 .card-name,.meta{display:block;overflow-wrap:anywhere}
 .card-name{font-weight:720;line-height:1.3}
 .meta{margin-top:4px}
@@ -82,6 +82,9 @@ dialog::backdrop{background:#05141daa}
 #fields p{margin:0;color:var(--muted)}
 #fields label{display:grid;gap:5px}
 #fields input,#fields select{min-width:0;width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;min-height:44px}
+#fields .disk-color-field{position:relative}
+#fields .disk-color-field select{padding-inline-start:40px}
+.color-swatch{position:absolute;bottom:13px;left:13px;width:18px;height:18px;border-radius:50%;background:var(--swatch);border:1px solid #05141d55;pointer-events:none}
 .dialog-actions{justify-content:flex-end}
 .action{text-align:left}
 .danger,#error{color:var(--danger)}

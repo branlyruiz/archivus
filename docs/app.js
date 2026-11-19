@@ -25,6 +25,19 @@ const configured = Boolean(supabaseUrl && publishableKey);
 const cacheKey = `archivus:snapshot:${supabaseUrl}`;
 const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
 const diskCapacities = ["500 GB", ...Array.from({ length: 8 }, (_, index) => `${index + 1} TB`)];
+const diskColors = {
+  rojo: ["Rojo", "#bd2439", "#fcecef"],
+  naranja: ["Naranja", "#a04609", "#fff0e4"],
+  amarillo: ["Amarillo", "#805d00", "#fff7db"],
+  verde: ["Verde", "#247044", "#eaf7ee"],
+  turquesa: ["Turquesa", "#08706e", "#e6f7f6"],
+  azul: ["Azul", "#245bb0", "#eaf2ff"],
+  morado: ["Morado", "#7344a3", "#f4edfc"],
+  rosa: ["Rosa", "#a5396d", "#fcecf4"],
+  gris: ["Gris / plateado", "#525d6b", "#f0f2f5"],
+  negro: ["Negro", "#222831", "#e9eaec"],
+  blanco: ["Blanco", "#fff", "#f4f5f6"],
+};
 const icons = {
   disk: '<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 13h18m-14 3h1m4 0h5"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
@@ -156,6 +169,12 @@ function openLocation(id) {
 
 function card(item, searching) {
   const article = element("article", null, "card");
+  const color = item.kind === "disk" ? getDiskColor(item.color) : null;
+  if (color) {
+    article.style.setProperty("--disk-icon", color[1]);
+    article.style.setProperty("--disk-tint", color[2]);
+    if (item.color === "blanco") article.style.setProperty("--disk-icon-background", "#525d6b");
+  }
   const open = button(null, () => openLocation(item.id), "open");
   open.dataset.focus = `open-${item.id}`;
   const glyph = element("span", null, "glyph");
@@ -259,6 +278,27 @@ function select(name) {
   return node;
 }
 
+function getDiskColor(value) {
+  return Object.hasOwn(diskColors, value) ? diskColors[value] : null;
+}
+
+function diskColorField(value) {
+  const control = select("color");
+  control.required = false;
+  control.add(new Option("Predeterminado", ""));
+  for (const [key, [label]] of Object.entries(diskColors)) control.add(new Option(label, key));
+  control.value = getDiskColor(value) ? value : "";
+  const label = field("Color del disco", control);
+  const swatch = element("span", null, "color-swatch");
+  swatch.setAttribute("aria-hidden", "true");
+  label.classList.add("disk-color-field");
+  label.append(swatch);
+  const preview = () => swatch.style.setProperty("--swatch", getDiskColor(control.value)?.[1] ?? "var(--accent)");
+  control.addEventListener("change", preview);
+  preview();
+  return label;
+}
+
 function showEdit(item) {
   const kind = item?.kind ?? (current ? "folder" : "disk");
   const type = kind === "disk" ? "disco" : "carpeta";
@@ -276,7 +316,7 @@ function showEdit(item) {
     const standard = diskCapacities.find((value) => value.replace(" ", "") === normalized);
     if (previousCapacity && !standard) capacity.add(new Option(previousCapacity, previousCapacity));
     capacity.value = standard ?? previousCapacity;
-    content.push(field("Tecnología", technology), field("Capacidad", capacity));
+    content.push(field("Tecnología", technology), field("Capacidad", capacity), diskColorField(item?.color));
   }
   showPanel(item ? `Editar ${type}` : kind === "disk" ? "Nuevo disco" : "Nueva carpeta",
     content, "Guardar", {
