@@ -164,7 +164,7 @@ function render() {
     ? [...items.values()].filter((item) => normalize(item.name).includes(query))
       .sort((a, b) => collator.compare(a.name, b.name))
     : children.get(current) ?? [];
-  byId("heading").textContent = location?.name ?? "Discos";
+  byId("heading").textContent = location?.name ?? "Discos W Agencia";
   byId("summary").textContent = location?.kind === "disk"
     ? [location.technology, location.interface, location.capacity].filter(Boolean).join(" · ")
     : location ? "" : "Organiza y encuentra el material de tu equipo.";
@@ -173,7 +173,7 @@ function render() {
   path.hidden = !current || Boolean(query);
   path.replaceChildren();
   if (!path.hidden) {
-    path.append(button("Discos", () => openLocation(null)));
+    path.append(button("Discos W Agencia", () => openLocation(null)));
     for (const item of ancestors(current)) {
       path.append(element("span", "›"));
       const segment = item.id === current
