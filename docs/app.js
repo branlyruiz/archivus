@@ -158,10 +158,16 @@ function setSearch(open) {
   if (open) search.focus();
 }
 
-function openLocation(id) {
+function openLocation(id, returnTo = null) {
   if (current !== id) closeFolderComposer();
   current = id;
   setSearch(false);
+  const originCard = returnTo && list.querySelector(`[data-focus="open-${CSS.escape(returnTo)}"]`);
+  if (originCard) {
+    originCard.focus({ preventScroll: true });
+    originCard.scrollIntoView({ block: "center", inline: "nearest" });
+    return;
+  }
   const heading = byId("heading");
   heading.tabIndex = -1;
   heading.focus();
@@ -203,7 +209,7 @@ inventorySurface.addEventListener("touchend", (event) => {
   const dy = Math.abs(touch.clientY - start.y);
   if (dx < 64 || dx <= dy * 1.5 || !event.cancelable) return;
   event.preventDefault();
-  openLocation(items.get(current)?.parent ?? null);
+  openLocation(items.get(start.location)?.parent ?? null, start.location);
 }, { passive: false });
 
 inventorySurface.addEventListener("touchcancel", () => { backSwipe = null; }, { passive: true });
