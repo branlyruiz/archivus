@@ -17,6 +17,7 @@ const error = byId("error");
 const configured = Boolean(supabaseUrl && publishableKey);
 const cacheKey = `archivus:snapshot:${supabaseUrl}`;
 const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
+const diskCapacities = ["500 GB", ...Array.from({ length: 8 }, (_, index) => `${index + 1} TB`)];
 const icons = {
   disk: '<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 13h18m-14 3h1m4 0h5"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
@@ -149,7 +150,7 @@ function card(item, searching) {
   const copy = element("span");
   const folderCount = children.get(item.id)?.length ?? 0;
   const caption = item.kind === "disk"
-    ? [item.technology, item.interface, item.capacity].filter(Boolean).join(" · ")
+    ? [item.technology, item.capacity].filter(Boolean).join(" · ")
     : searching
       ? ancestors(item.parent).map(({ name }) => name).join(" › ")
       : `${folderCount} ${folderCount === 1 ? "carpeta" : "carpetas"}`;
@@ -176,7 +177,7 @@ function render() {
     : children.get(current) ?? [];
   byId("heading").textContent = location?.name ?? "Discos W Agencia";
   byId("summary").textContent = location?.kind === "disk"
-    ? [location.technology, location.interface, location.capacity].filter(Boolean).join(" · ")
+    ? [location.technology, location.capacity].filter(Boolean).join(" · ")
     : location ? "" : "Organiza y encuentra el material de tu equipo.";
   byId("summary").hidden = !byId("summary").textContent;
   add.setAttribute("aria-label", current ? "Nueva carpeta" : "Nuevo disco");
@@ -251,14 +252,22 @@ function showEdit(item) {
     const technology = select("technology");
     for (const option of ["HDD", "SSD", "Otro"]) technology.add(new Option(option, option));
     technology.value = item?.technology ?? "HDD";
-    content.push(field("Tecnología", technology),
-      field("Interfaz", input("interface", item?.interface, 60)),
-      field("Capacidad", input("capacity", item?.capacity, 60)));
+    const capacity = select("capacity");
+    capacity.required = false;
+    capacity.add(new Option("Selecciona una capacidad", ""));
+    for (const value of diskCapacities) capacity.add(new Option(value, value));
+    const previousCapacity = item?.capacity ?? "";
+    const normalized = previousCapacity.toUpperCase().replace(/\s+/g, "").replace(/T$/, "TB");
+    const standard = diskCapacities.find((value) => value.replace(" ", "") === normalized);
+    if (previousCapacity && !standard) capacity.add(new Option(previousCapacity, previousCapacity));
+    capacity.value = standard ?? previousCapacity;
+    content.push(field("Tecnología", technology), field("Capacidad", capacity));
   }
   showPanel(item ? `Editar ${type}` : kind === "disk" ? "Nuevo disco" : "Nueva carpeta",
     content, "Guardar", {
       action: item ? "edit" : "create", id: item?.id ?? crypto.randomUUID(),
       kind, parent: item?.parent ?? current, version: item?.version,
+      interface: item?.interface,
     });
 }
 
