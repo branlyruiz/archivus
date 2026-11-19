@@ -367,6 +367,9 @@ function keepEditorVisible() {
 window.visualViewport?.addEventListener("resize", keepEditorVisible);
 window.visualViewport?.addEventListener("scroll", keepEditorVisible);
 folderAdd.addEventListener("click", openFolderComposer);
+folderSave.addEventListener("pointerdown", (event) => {
+  if (document.activeElement === folderName) event.preventDefault();
+});
 folderCancel.addEventListener("click", () => closeFolderComposer({ restoreFocus: true }));
 folderName.addEventListener("keydown", (event) => {
   if (event.key !== "Escape" || savingFolder) return;
@@ -376,7 +379,8 @@ folderName.addEventListener("keydown", (event) => {
 folderForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!current || savingFolder || !ready) return;
-  const name = folderName.value.trim();
+  const enteredName = folderName.value;
+  const name = enteredName.trim();
   if (!name) {
     folderError.textContent = "Escribe el nombre de la carpeta.";
     folderError.hidden = false;
@@ -389,17 +393,14 @@ folderForm.addEventListener("submit", async (event) => {
   const draft = folderDraft;
   savingFolder = true;
   folderSave.disabled = folderCancel.disabled = add.disabled = true;
-  folderName.readOnly = true;
+  folderName.focus();
   folderError.hidden = true;
   try {
     applySnapshot(await rpc("archivus_write", { change: draft }));
     if (folderDraft === draft) {
-      const focused = folderForm.contains(document.activeElement);
-      closeFolderComposer();
-      if (focused && !folderComposer.hidden && ready) {
-        folderAdd.disabled = false;
-        folderAdd.focus();
-      }
+      folderDraft = null;
+      if (folderName.value === enteredName) folderForm.reset();
+      requestAnimationFrame(keepEditorVisible);
       byId("notice").textContent = "Carpeta agregada.";
     }
   } catch (failure) {
@@ -411,7 +412,7 @@ folderForm.addEventListener("submit", async (event) => {
   } finally {
     savingFolder = false;
     folderSave.disabled = folderAdd.disabled = add.disabled = !ready;
-    folderCancel.disabled = folderName.readOnly = false;
+    folderCancel.disabled = false;
   }
 });
 
