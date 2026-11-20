@@ -96,7 +96,8 @@ dialog::backdrop{background:#05141daa}
 .danger,#error{color:var(--danger)}
 .danger.primary{background:var(--danger);color:var(--on-accent)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.dock{position:fixed;z-index:1;inset-inline:0;bottom:calc(14px + env(safe-area-inset-bottom));margin-inline:auto;width:max-content;display:flex;align-items:center;gap:8px;padding:7px;border:1px solid var(--border);border-radius:999px;background:var(--panel);box-shadow:0 10px 30px #05141d26;animation:dock-in .28s ease-out}
+.swipe-outgoing{position:fixed;inset:0;z-index:1;overflow:hidden;pointer-events:none;contain:layout paint}
+.dock{position:fixed;z-index:2;inset-inline:0;bottom:calc(14px + env(safe-area-inset-bottom));margin-inline:auto;width:max-content;display:flex;align-items:center;gap:8px;padding:7px;border:1px solid var(--border);border-radius:999px;background:var(--panel);box-shadow:0 10px 30px #05141d26;animation:dock-in .28s ease-out}
 .dock button{display:grid;place-items:center;width:48px;height:48px;padding:0;border:0;border-radius:50%;transition:transform .16s ease,background-color .16s ease,color .16s ease}
 .dock button:active:enabled{transform:scale(.9)}
 .dock button[aria-current],.dock button[aria-expanded="true"],.dock button:not(.primary):hover{background:var(--accent-soft);color:var(--danger)}

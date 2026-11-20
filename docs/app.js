@@ -230,6 +230,43 @@ inventorySurface.addEventListener("touchmove", (event) => {
   }
 }, { passive: false });
 
+function swipeToParent(location) {
+  const parent = items.get(location)?.parent ?? null;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    openLocation(parent, location);
+    return;
+  }
+
+  const layer = element("div", null, "swipe-outgoing");
+  const snapshot = inventorySurface.cloneNode(true);
+  const bounds = inventorySurface.getBoundingClientRect();
+  layer.setAttribute("aria-hidden", "true");
+  layer.inert = true;
+  Object.assign(snapshot.style, {
+    position: "absolute",
+    top: `${bounds.top}px`,
+    left: `${bounds.left}px`,
+    width: `${bounds.width}px`,
+    height: `${bounds.height}px`,
+  });
+  layer.append(snapshot);
+  document.body.append(layer);
+  snapshot.querySelector("#path").scrollLeft = path.scrollLeft;
+
+  openLocation(parent, location);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (current !== parent) {
+      layer.remove();
+      return;
+    }
+    const animation = layer.animate(
+      [{ transform: "translateX(0)" }, { transform: "translateX(100%)" }],
+      { duration: 220, easing: "cubic-bezier(.22,.72,.3,1)" },
+    );
+    animation.finished.then(() => layer.remove(), () => layer.remove());
+  }));
+}
+
 inventorySurface.addEventListener("touchend", (event) => {
   const start = backSwipe;
   backSwipe = null;
@@ -239,7 +276,7 @@ inventorySurface.addEventListener("touchend", (event) => {
   const dy = Math.abs(touch.clientY - start.y);
   if (dx < 64 || dx <= dy * 1.5 || !event.cancelable) return;
   event.preventDefault();
-  openLocation(items.get(start.location)?.parent ?? null, start.location);
+  swipeToParent(start.location);
 }, { passive: false });
 
 inventorySurface.addEventListener("touchcancel", () => { backSwipe = null; }, { passive: true });
