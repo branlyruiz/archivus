@@ -1,4 +1,5 @@
 import { supabaseUrl, publishableKey } from "./config.js";
+import { makeFolderPdf } from "./folder-pdf.js?v=21";
 
 const byId = (id) => document.getElementById(id);
 const search = byId("search");
@@ -350,7 +351,7 @@ function folderPickButton(item) {
   return toggle;
 }
 
-function showFolderPicks() {
+function folderPickGroups() {
   const groups = new Map();
   for (const [id, found] of folderPicks) {
     const trail = ancestors(id);
@@ -360,7 +361,29 @@ function showFolderPicks() {
     groups.get(key).folders.push({ id, found, trail });
   }
 
-  const content = [...groups.values()].sort((a, b) => collator.compare(a.name, b.name)).map(({ name, folders }) => {
+  return [...groups.values()].sort((a, b) => collator.compare(a.name, b.name));
+}
+
+function exportFolderPicks() {
+  if (!folderPicks.size) return;
+  try {
+    const pdf = makeFolderPdf(folderPickGroups());
+    const url = URL.createObjectURL(pdf);
+    const download = element("a");
+    download.href = url;
+    download.download = "Archivus-lista-de-busqueda.pdf";
+    document.body.append(download);
+    download.click();
+    download.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } catch {
+    error.textContent = "No se pudo generar el PDF. Vuelve a intentarlo.";
+    error.hidden = false;
+  }
+}
+
+function showFolderPicks() {
+  const content = folderPickGroups().map(({ name, folders }) => {
     const group = element("section", null, "pick-group");
     group.append(element("h3", name));
     for (const { id, found, trail } of folders) {
@@ -396,6 +419,7 @@ function showFolderPicks() {
   if (!content.length) content.push(element("p", "Agrega carpetas con + desde los resultados de búsqueda."));
   showPanel("Lista de búsqueda", content);
   byId("cancel").textContent = "Cerrar";
+  byId("export-picks").hidden = !folderPicks.size;
 }
 
 function normalize(value) {
@@ -460,6 +484,7 @@ function showPanel(title, content, action, nextOperation) {
   error.hidden = true;
   operation = nextOperation;
   byId("cancel").textContent = "Cancelar";
+  byId("export-picks").hidden = true;
   save.hidden = !action;
   save.textContent = action ?? "";
   save.classList.toggle("danger", nextOperation?.action === "delete");
@@ -713,6 +738,7 @@ search.addEventListener("keydown", (event) => {
 });
 add.addEventListener("click", () => current ? openFolderComposer() : showEdit());
 viewPicks.addEventListener("click", showFolderPicks);
+byId("export-picks").addEventListener("click", exportFolderPicks);
 viewPicks.textContent = `Ver lista (${folderPicks.size})`;
 search.addEventListener("input", render);
 window.addEventListener("online", refresh);
