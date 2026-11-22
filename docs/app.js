@@ -416,10 +416,40 @@ function showFolderPicks() {
     return group;
   });
 
-  if (!content.length) content.push(element("p", "Agrega carpetas con + desde los resultados de búsqueda."));
+  if (content.length) {
+    const actions = element("div", null, "pick-actions");
+    actions.append(button("Vaciar lista", confirmClearFolderPicks, "pick-clear"));
+    content.unshift(actions);
+  } else {
+    content.push(element("p", "Agrega carpetas con + desde los resultados de búsqueda."));
+  }
   showPanel("Lista de búsqueda", content);
   byId("cancel").textContent = "Cerrar";
   byId("export-picks").hidden = !folderPicks.size;
+}
+
+function confirmClearFolderPicks() {
+  const actions = element("div", null, "dialog-actions");
+  const cancel = button("Volver a la lista", () => {
+    showFolderPicks();
+    fields.querySelector(".pick-clear")?.focus();
+  });
+  const clear = button("Sí, vaciar lista", () => {
+    folderPicks.clear();
+    saveFolderPicks();
+    render();
+    showFolderPicks();
+    byId("notice").textContent = "Lista vaciada.";
+    byId("cancel").focus();
+  }, "primary danger");
+  actions.append(cancel, clear);
+  showPanel("¿Vaciar la lista?", [
+    element("p", folderPicks.size === 1
+      ? "Se quitará la carpeta seleccionada y su marca de «Encontrada»."
+      : `Se quitarán las ${folderPicks.size} carpetas seleccionadas y sus marcas de «Encontrada».`),
+    actions,
+  ]);
+  byId("cancel").hidden = true;
 }
 
 function normalize(value) {
@@ -484,6 +514,7 @@ function showPanel(title, content, action, nextOperation) {
   error.hidden = true;
   operation = nextOperation;
   byId("cancel").textContent = "Cancelar";
+  byId("cancel").hidden = false;
   byId("export-picks").hidden = true;
   save.hidden = !action;
   save.textContent = action ?? "";

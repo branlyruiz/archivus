@@ -120,3 +120,8 @@ dialog::backdrop{background:#05141daa}
 .pick-location{font-size:.83rem}
 .pick-row.found .pick-name{text-decoration:line-through}
 .pick-remove{padding:0}
+
+.pick-actions{display:flex;justify-content:flex-end}
+.pick-clear{border-color:transparent;background:none;color:var(--danger);font-size:.875rem;font-weight:680}
+.pick-clear:hover{background:var(--accent-soft)}
+#editor > .dialog-actions:not(:has(> button:not([hidden]))){display:none}
