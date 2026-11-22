@@ -3,6 +3,7 @@ import { supabaseUrl, publishableKey } from "./config.js";
 const byId = (id) => document.getElementById(id);
 const search = byId("search");
 const searchPanel = byId("search-panel");
+const viewPicks = byId("view-picks");
 const searchToggle = byId("dock-search");
 const dockHome = byId("dock-home");
 const list = byId("list");
@@ -48,6 +49,17 @@ try {
   snapshot = JSON.parse(localStorage.getItem(cacheKey));
 } catch {
   // An unavailable cache does not prevent loading the shared inventory.
+}
+const picksKey = `archivus:folder-picks:${supabaseUrl}`;
+let folderPicks = new Map();
+try {
+  const saved = JSON.parse(localStorage.getItem(picksKey));
+  if (Array.isArray(saved)) {
+    folderPicks = new Map(saved.filter((entry) => Array.isArray(entry)
+      && typeof entry[0] === "string" && typeof entry[1] === "boolean"));
+  }
+} catch {
+  // The list can still be used if local storage is unavailable.
 }
 let items = new Map();
 let children = new Map();
@@ -306,8 +318,84 @@ function card(item, searching) {
   const more = button("•••", () => showActions(item), "more");
   more.dataset.focus = `more-${item.id}`;
   more.setAttribute("aria-label", `Acciones de ${item.name}`);
-  article.append(open, more);
+  article.append(open);
+  if (searching && item.kind === "folder") article.append(folderPickButton(item));
+  article.append(more);
   return article;
+}
+
+function saveFolderPicks() {
+  viewPicks.textContent = `Ver lista (${folderPicks.size})`;
+  try {
+    localStorage.setItem(picksKey, JSON.stringify([...folderPicks]));
+  } catch {
+    byId("notice").textContent = "La lista está disponible mientras esta app siga abierta.";
+  }
+}
+
+function folderPickButton(item) {
+  const toggle = button(null, () => {
+    if (folderPicks.has(item.id)) folderPicks.delete(item.id);
+    else folderPicks.set(item.id, false);
+    saveFolderPicks();
+    update();
+  }, "pick-toggle");
+  toggle.setAttribute("aria-label", `Incluir ${item.name} en la lista`);
+  const update = () => {
+    const selected = folderPicks.has(item.id);
+    toggle.textContent = selected ? "✓" : "+";
+    toggle.setAttribute("aria-pressed", String(selected));
+  };
+  update();
+  return toggle;
+}
+
+function showFolderPicks() {
+  const groups = new Map();
+  for (const [id, found] of folderPicks) {
+    const trail = ancestors(id);
+    const disk = trail[0];
+    const key = disk?.id ?? null;
+    if (!groups.has(key)) groups.set(key, { name: disk?.name ?? "Sin ubicación disponible", folders: [] });
+    groups.get(key).folders.push({ id, found, trail });
+  }
+
+  const content = [...groups.values()].sort((a, b) => collator.compare(a.name, b.name)).map(({ name, folders }) => {
+    const group = element("section", null, "pick-group");
+    group.append(element("h3", name));
+    for (const { id, found, trail } of folders) {
+      const item = trail.at(-1);
+      const title = item?.name ?? "Carpeta no disponible";
+      const row = element("div", null, "pick-row");
+      const checkbox = element("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = found;
+      checkbox.setAttribute("aria-label", `Encontrada: ${trail.map(({ name }) => name).join(" › ") || title}`);
+      checkbox.addEventListener("change", () => {
+        folderPicks.set(id, checkbox.checked);
+        row.classList.toggle("found", checkbox.checked);
+        saveFolderPicks();
+      });
+      row.classList.toggle("found", found);
+      const details = element("div");
+      details.append(element("strong", title, "pick-name"));
+      if (item) details.append(element("p", trail.map(({ name }) => name).join(" › "), "pick-location"));
+      const remove = button("×", () => {
+        folderPicks.delete(id);
+        saveFolderPicks();
+        render();
+        showFolderPicks();
+      }, "pick-remove");
+      remove.setAttribute("aria-label", `Quitar ${title} de la lista`);
+      row.append(checkbox, details, remove);
+      group.append(row);
+    }
+    return group;
+  });
+
+  if (!content.length) content.push(element("p", "Agrega carpetas con + desde los resultados de búsqueda."));
+  showPanel("Lista de búsqueda", content);
+  byId("cancel").textContent = "Cerrar";
 }
 
 function normalize(value) {
@@ -371,6 +459,7 @@ function showPanel(title, content, action, nextOperation) {
   fields.replaceChildren(...content);
   error.hidden = true;
   operation = nextOperation;
+  byId("cancel").textContent = "Cancelar";
   save.hidden = !action;
   save.textContent = action ?? "";
   save.classList.toggle("danger", nextOperation?.action === "delete");
@@ -623,6 +712,8 @@ search.addEventListener("keydown", (event) => {
   searchToggle.focus();
 });
 add.addEventListener("click", () => current ? openFolderComposer() : showEdit());
+viewPicks.addEventListener("click", showFolderPicks);
+viewPicks.textContent = `Ver lista (${folderPicks.size})`;
 search.addEventListener("input", render);
 window.addEventListener("online", refresh);
 window.addEventListener("offline", () => setStatus(snapshot ? "Sin conexión · copia local" : "Sin conexión"));
