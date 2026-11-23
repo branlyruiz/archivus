@@ -1,5 +1,6 @@
 import { supabaseUrl, publishableKey } from "./config.js";
 import { makeFolderPdf } from "./folder-pdf.js?v=21";
+import { inventoryCache } from "./inventory-cache.js?v=26";
 
 const byId = (id) => document.getElementById(id);
 const search = byId("search");
@@ -29,6 +30,7 @@ const save = byId("save");
 const error = byId("error");
 const configured = Boolean(supabaseUrl && publishableKey);
 const cacheKey = `archivus:snapshot:${supabaseUrl}`;
+const cache = inventoryCache(cacheKey);
 const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
 const diskCapacities = ["500 GB", ...Array.from({ length: 8 }, (_, index) => `${index + 1} TB`)];
 const diskColors = {
@@ -69,6 +71,8 @@ try {
 }
 let items = new Map();
 let children = new Map();
+let searchIndex = [];
+const byName = (a, b) => collator.compare(a.name, b.name) || a.id.localeCompare(b.id);
 let current = null;
 let ready = false;
 let refreshing = false;
@@ -120,61 +124,19 @@ async function rpc(method, payload, timeout = 40000) {
   return result;
 }
 
-function openSnapshotDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open("archivus-offline", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("inventories");
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function saveLargeSnapshot(next) {
-  try {
-    const db = await openSnapshotDatabase();
-    const transaction = db.transaction("inventories", "readwrite");
-    const store = transaction.objectStore("inventories");
-    const lookup = store.get(cacheKey);
-    lookup.onsuccess = () => {
-      if (!lookup.result || lookup.result.revision <= next.revision) store.put(next, cacheKey);
-    };
-    transaction.oncomplete = transaction.onabort = () => db.close();
-  } catch {
-    // The shared inventory remains available online.
-  }
-}
-
-async function loadLargeSnapshot() {
-  try {
-    const db = await openSnapshotDatabase();
-    const request = db.transaction("inventories").objectStore("inventories").get(cacheKey);
-    request.onsuccess = () => {
-      if (!ready && request.result && (!snapshot || request.result.revision > snapshot.revision)) {
-        applySnapshot(request.result);
-      }
-      db.close();
-    };
-    request.onerror = () => db.close();
-  } catch {
-    // Keep the previous local cache when IndexedDB is unavailable.
-  }
-}
-
-function applySnapshot(next) {
-  if (!next || (snapshot && next.revision < snapshot.revision)) return;
-  snapshot = next;
-  items = new Map(next.items.map((item) => [item.id, item]));
+function rebuildIndex() {
   children = new Map();
-  for (const item of next.items) {
+  searchIndex = [];
+  for (const item of items.values()) {
     if (!children.has(item.parent)) children.set(item.parent, []);
     children.get(item.parent).push(item);
+    searchIndex.push({ id: item.id, name: item.name, term: normalize(item.name) });
   }
-  for (const group of children.values()) group.sort((a, b) => collator.compare(a.name, b.name));
-  try {
-    localStorage.setItem(cacheKey, JSON.stringify(next));
-  } catch {
-    void saveLargeSnapshot(next);
-  }
+  for (const group of children.values()) group.sort(byName);
+  searchIndex.sort(byName);
+}
+
+function refreshView() {
   if (current && !items.has(current)) {
     current = null;
     closeFolderComposer();
@@ -182,20 +144,128 @@ function applySnapshot(next) {
   render();
 }
 
+function applySnapshot(next) {
+  snapshot = { revision: next.revision };
+  items = new Map(next.items.map((item) => [item.id, item]));
+  rebuildIndex();
+  refreshView();
+}
+
+function insertSorted(array, item) {
+  let left = 0, right = array.length;
+  while (left < right) {
+    const middle = (left + right) >>> 1;
+    if (byName(array[middle], item) < 0) left = middle + 1;
+    else right = middle;
+  }
+  array.splice(left, 0, item);
+}
+
+function applyChanges(records, revision, from) {
+  const rebuild = from < 0 || records.size > 60;
+  if (from < 0) items = new Map();
+  for (const [id, item] of records) {
+    const previous = items.get(id);
+    if (item) items.set(id, item);
+    else items.delete(id);
+    if (rebuild) continue;
+
+    if (previous) {
+      const siblings = children.get(previous.parent);
+      if (siblings) siblings.splice(siblings.indexOf(previous), 1);
+      const index = searchIndex.findIndex((entry) => entry.id === id);
+      if (index >= 0) searchIndex.splice(index, 1);
+    }
+    if (item) {
+      if (!children.has(item.parent)) children.set(item.parent, []);
+      insertSorted(children.get(item.parent), item);
+      insertSorted(searchIndex, { id: item.id, name: item.name, term: normalize(item.name) });
+    }
+  }
+  snapshot = { revision };
+  if (rebuild) rebuildIndex();
+  if (records.size || from < 0) refreshView();
+}
+
+async function syncInventory() {
+  const localRevision = await cache.revision();
+  if (typeof localRevision === "number" && localRevision > (snapshot?.revision ?? -1)) {
+    const newer = await cache.load();
+    if (newer?.items) applySnapshot(newer);
+  }
+
+  const base = snapshot?.revision ?? -1;
+  let stage = await cache.checkpoint();
+  if (stage && stage.base !== base) {
+    await cache.discard();
+    stage = null;
+  }
+  let pages = stage?.pages ?? [];
+  let latest;
+  for (;;) {
+    const page = await rpc("archivus_sync", {
+      known_revision: stage?.from ?? base,
+      target_revision: stage?.revision ?? null,
+      cursor_version: stage?.cursor?.[0] ?? null,
+      cursor_id: stage?.cursor?.[1] ?? null,
+    });
+    if (!page) return;
+    if (page.restart) {
+      await cache.discard();
+      stage = null;
+      pages = [];
+      continue;
+    }
+    latest = page.latest;
+    stage = { base, from: page.from, revision: page.revision, cursor: page.cursor, index: pages.length };
+    pages.push(page.records);
+    if (page.cursor) {
+      await cache.savePage(stage, page.records);
+      setStatus(`${page.from < 0 ? "Descargando inventario" : "Actualizando"} · ${((stage.index + 1) * 2000).toLocaleString("es-CO")} registros`, ready);
+      continue;
+    }
+    const records = new Map();
+    for (const chunk of pages) for (const [id, item] of chunk) records.set(id, item);
+    await cache.commit(base, stage.revision, stage.from, records, items);
+    applyChanges(records, stage.revision, stage.from);
+    return latest > stage.revision;
+  }
+}
+
+let bootstrapping = true;
+let syncQueued = false;
+
 async function refresh() {
-  if (!configured || refreshing || !navigator.onLine) return;
+  if (!configured || !navigator.onLine || bootstrapping) return;
+  if (refreshing) {
+    syncQueued = true;
+    return;
+  }
   refreshing = true;
   try {
-    // Always validate the first cached snapshot against the server, even after a restore.
-    const next = await rpc("archivus_read", { known_revision: ready ? snapshot?.revision ?? -1 : -1 });
-    if (next && !ready && !saving && !savingFolder && snapshot && next.revision < snapshot.revision) snapshot = null;
-    if (next) applySnapshot(next);
-    setStatus("Sincronizado", true);
+    const sync = async (lock) => {
+      if (!lock) return;
+      const more = await syncInventory();
+      if (!navigator.onLine) return;
+      setStatus("Sincronizado", true);
+      if (more) syncQueued = true;
+    };
+    if (navigator.locks) await navigator.locks.request(cacheKey, { ifAvailable: true }, sync);
+    else await sync(true);
   } catch {
-    setStatus(snapshot ? "Sin sincronizar · copia local" : "No se pudo conectar");
+    if (navigator.onLine) setStatus(snapshot ? "Sin sincronizar · copia local" : "No se pudo conectar");
   } finally {
     refreshing = false;
+    if (syncQueued) {
+      syncQueued = false;
+      void refresh();
+    }
   }
+}
+
+async function writeInventory(change) {
+  await rpc("archivus_write", { change: { ...change, sync_only: true } });
+  await refresh();
 }
 
 function ancestors(id) {
@@ -525,8 +595,7 @@ function render() {
   const location = items.get(current);
   const query = normalize(search.value.trim());
   const results = query
-    ? [...items.values()].filter((item) => normalize(item.name).includes(query))
-      .sort((a, b) => collator.compare(a.name, b.name))
+    ? searchIndex.filter((item) => item.term.includes(query))
     : children.get(current) ?? [];
   byId("heading").textContent = location?.name ?? "Discos W Agencia";
   byId("summary").textContent = location?.kind === "disk"
@@ -548,7 +617,7 @@ function render() {
       : query ? "No se encontraron coincidencias."
         : current ? "Esta ubicación aún no tiene carpetas." : "Agrega el primer disco del inventario.";
   const empty = folderComposer.hidden ? [element("p", emptyText, "empty")] : [];
-  list.replaceChildren(...(results.length ? results.slice(0, visibleLimit).map((item) => card(item, Boolean(query))) : empty));
+  list.replaceChildren(...(results.length ? results.slice(0, visibleLimit).map(({ id }) => card(items.get(id), Boolean(query))) : empty));
   loadMore.hidden = results.length <= visibleLimit;
   loadMore.textContent = `Ver más (${Math.min(visibleLimit, results.length)} de ${results.length})`;
   if (focusKey) list.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
@@ -774,7 +843,7 @@ folderForm.addEventListener("submit", async (event) => {
   folderName.focus();
   folderError.hidden = true;
   try {
-    applySnapshot(await rpc("archivus_write", { change: draft }));
+    await writeInventory(draft);
     if (folderDraft === draft) {
       folderDraft = null;
       if (folderName.value === enteredName) folderForm.reset();
@@ -878,7 +947,7 @@ form.addEventListener("submit", async (event) => {
         : "El inventario ya incluía estas rutas.";
       void refresh();
     } else {
-      applySnapshot(await rpc("archivus_write", { change: request }));
+      await writeInventory(request);
       dialog.close();
       byId("notice").textContent = ({ create: "Registro agregado.", edit: "Cambios guardados.",
         move: "Registro movido.", delete: "Registro eliminado." })[request.action];
@@ -937,10 +1006,14 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) void
 if (snapshot) applySnapshot(snapshot);
 else render();
 if (configured) {
-  void loadLargeSnapshot();
-  if (!navigator.onLine) setStatus(snapshot ? "Sin conexión · copia local" : "Sin conexión");
-  void refresh();
-  setInterval(() => { if (!document.hidden) void refresh(); }, 2000);
+  if (snapshot || !navigator.onLine) setStatus(snapshot ? "Copia local" : "Sin conexión");
+  void cache.load().then((cached) => {
+    if (cached?.items && (!snapshot || cached.revision > snapshot.revision)) applySnapshot(cached);
+    bootstrapping = false;
+    if (navigator.onLine) void refresh();
+    else setStatus(snapshot ? "Sin conexión · copia local" : "Sin conexión");
+  });
+  setInterval(() => { if (!document.hidden) void refresh(); }, 10000);
 } else {
   setStatus("Conexión pendiente");
 }

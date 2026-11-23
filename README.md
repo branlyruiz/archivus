@@ -19,3 +19,5 @@ Para habilitar archivos e importaciones, aplica también `supabase/add-file-impo
 Aplica también `supabase/extend-import-timeout.sql` para que una importación grande pueda completarse en una única transacción.
 
 Aplica `supabase/raise-import-limit.sql` después de la migración anterior para admitir hasta 100.000 rutas por importación.
+
+Aplica después `supabase/add-incremental-sync.sql`. Archivus reutiliza la copia local existente, guarda las siguientes sincronizaciones en IndexedDB y descarga únicamente los cambios desde la última revisión compatible. La primera copia se descarga por páginas y conserva su progreso local.
