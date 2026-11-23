@@ -109,8 +109,14 @@ async function rpc(method, payload, timeout = 10000) {
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(timeout),
   });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.code === "P0001" ? result.message : "No se pudo comunicar con el inventario.");
+  const result = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (result?.code === "P0001") throw new Error(result.message);
+    if (result?.code === "57014" || response.status === 504) {
+      throw new Error("El servicio agotó el tiempo de espera. Vuelve a intentar la importación.");
+    }
+    throw new Error(`El servicio del inventario respondió con un error (${response.status}).`);
+  }
   return result;
 }
 
@@ -862,6 +868,7 @@ form.addEventListener("submit", async (event) => {
   save.disabled = byId("cancel").disabled = byId("close").disabled = true;
   try {
     if (request.action === "import") {
+      save.textContent = "Importando…";
       const result = await rpc("archivus_import", {
         disk_id: request.disk_id || null, volume_name: request.volume, entries: request.entries,
       }, 65000);
@@ -882,6 +889,7 @@ form.addEventListener("submit", async (event) => {
     void refresh();
   } finally {
     saving = false;
+    if (request.action === "import") save.textContent = "Importar rutas";
     save.disabled = !ready;
     byId("cancel").disabled = byId("close").disabled = false;
   }
