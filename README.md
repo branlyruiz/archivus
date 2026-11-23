@@ -17,3 +17,5 @@ El uso diario es directo, sin cuentas ni código. El inventario permite lectura 
 Para habilitar archivos e importaciones, aplica también `supabase/add-file-import.sql` después de la migración de color. En **Tus discos → Importar JSON**, selecciona un inventario `archivus.disk-inventory` v1, revisa el destino y confirma. La importación agrega rutas de carpetas y archivos al inventario compartido.
 
 Aplica también `supabase/extend-import-timeout.sql` para que una importación grande pueda completarse en una única transacción.
+
+Aplica `supabase/raise-import-limit.sql` después de la migración anterior para admitir hasta 100.000 rutas por importación.

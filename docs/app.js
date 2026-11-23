@@ -102,7 +102,7 @@ function setStatus(text, connected = false) {
   if (dialog.open && operation && !saving) save.disabled = !ready;
 }
 
-async function rpc(method, payload, timeout = 10000) {
+async function rpc(method, payload, timeout = 40000) {
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${method}`, {
     method: "POST",
     headers: { apikey: publishableKey, "Content-Type": "application/json" },
@@ -823,8 +823,8 @@ function showInventoryImport() {
       if (!file.isConnected || !dialog.open || file.files[0] !== source) return;
       if (data?.schema !== "archivus.disk-inventory" || data.version !== 1 || typeof data.volume?.name !== "string"
         || !data.volume.name.trim() || Array.from(data.volume.name.trim()).length > 120
-        || !Array.isArray(data.entries) || !data.entries.length || data.entries.length > 50000) {
-        throw new Error("Selecciona un JSON de inventario de Archivus con entre 1 y 50.000 rutas.");
+        || !Array.isArray(data.entries) || !data.entries.length || data.entries.length > 100000) {
+        throw new Error("Selecciona un JSON de inventario de Archivus con entre 1 y 100.000 rutas.");
       }
       const entries = data.entries.map((entry) => {
         if (!entry || !["directory", "file"].includes(entry.type) || typeof entry.path !== "string" || !entry.path
