@@ -13,3 +13,5 @@ Inventario de discos y carpetas para equipos audiovisuales. Guarda nombres y esp
 ## Sincronización
 
 El uso diario es directo, sin cuentas ni código. El inventario permite lectura y escritura públicas. La app consulta cambios cada dos segundos mientras está visible, vuelve a consultar al abrir o reconectar y permite consultar la última copia guardada sin conexión. Para escribir hace falta conexión.
+
+Para habilitar archivos e importaciones, aplica también `supabase/add-file-import.sql` después de la migración de color. En **Tus discos → Importar JSON**, selecciona un inventario `archivus.disk-inventory` v1, revisa el destino y confirma. La importación agrega rutas de carpetas y archivos al inventario compartido.

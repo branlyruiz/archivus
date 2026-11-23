@@ -8,6 +8,10 @@ const viewPicks = byId("view-picks");
 const searchToggle = byId("dock-search");
 const dockHome = byId("dock-home");
 const list = byId("list");
+const importButton = byId("import-inventory");
+const loadMore = byId("load-more");
+const pageSize = 150;
+let visibleLimit = pageSize;
 const path = byId("path");
 const add = byId("add");
 const sync = byId("sync");
@@ -41,6 +45,7 @@ const diskColors = {
   blanco: ["Blanco", "#fff", "#f4f5f6"],
 };
 const icons = {
+  file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h4M9 13h6m-6 4h6"/>',
   disk: '<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 13h18m-14 3h1m4 0h5"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
 };
@@ -92,20 +97,61 @@ function setStatus(text, connected = false) {
   sync.dataset.ready = String(connected);
   if (sync.textContent !== text) sync.textContent = text;
   add.disabled = folderAdd.disabled = !ready || savingFolder;
+  importButton.disabled = byId("new-file").disabled = !ready;
   folderSave.disabled = !ready || savingFolder;
   if (dialog.open && operation && !saving) save.disabled = !ready;
 }
 
-async function rpc(method, payload) {
+async function rpc(method, payload, timeout = 10000) {
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${method}`, {
     method: "POST",
     headers: { apikey: publishableKey, "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(timeout),
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.code === "P0001" ? result.message : "No se pudo comunicar con el inventario.");
   return result;
+}
+
+function openSnapshotDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("archivus-offline", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("inventories");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveLargeSnapshot(next) {
+  try {
+    const db = await openSnapshotDatabase();
+    const transaction = db.transaction("inventories", "readwrite");
+    const store = transaction.objectStore("inventories");
+    const lookup = store.get(cacheKey);
+    lookup.onsuccess = () => {
+      if (!lookup.result || lookup.result.revision <= next.revision) store.put(next, cacheKey);
+    };
+    transaction.oncomplete = transaction.onabort = () => db.close();
+  } catch {
+    // The shared inventory remains available online.
+  }
+}
+
+async function loadLargeSnapshot() {
+  try {
+    const db = await openSnapshotDatabase();
+    const request = db.transaction("inventories").objectStore("inventories").get(cacheKey);
+    request.onsuccess = () => {
+      if (!ready && request.result && (!snapshot || request.result.revision > snapshot.revision)) {
+        applySnapshot(request.result);
+      }
+      db.close();
+    };
+    request.onerror = () => db.close();
+  } catch {
+    // Keep the previous local cache when IndexedDB is unavailable.
+  }
 }
 
 function applySnapshot(next) {
@@ -121,7 +167,7 @@ function applySnapshot(next) {
   try {
     localStorage.setItem(cacheKey, JSON.stringify(next));
   } catch {
-    // The online inventory remains available when storage is full or disabled.
+    void saveLargeSnapshot(next);
   }
   if (current && !items.has(current)) {
     current = null;
@@ -166,7 +212,10 @@ function branch(id) {
 function setSearch(open) {
   searchPanel.hidden = !open;
   searchToggle.setAttribute("aria-expanded", String(open));
-  if (!open) search.value = "";
+  if (!open && search.value) {
+    search.value = "";
+    visibleLimit = pageSize;
+  }
   render();
   if (open) search.focus();
 }
@@ -198,8 +247,16 @@ function restoreReturnPosition(id, itemId) {
 
 function openLocation(id, returnTo = null) {
   returnPosition = null;
-  if (current !== id) closeFolderComposer();
+  if (current !== id) {
+    closeFolderComposer();
+    visibleLimit = pageSize;
+  }
   current = id;
+  if (returnTo) {
+    search.value = "";
+    const position = children.get(id)?.findIndex((item) => item.id === returnTo) ?? -1;
+    visibleLimit = Math.max(visibleLimit, Math.ceil((position + 1) / pageSize) * pageSize);
+  }
   setSearch(false);
   const originCard = returnTo && list.querySelector(`[data-focus="open-${CSS.escape(returnTo)}"]`);
   if (originCard) {
@@ -302,7 +359,7 @@ function card(item, searching) {
     article.style.setProperty("--disk-tint", color[2]);
     if (item.color === "blanco") article.style.setProperty("--disk-icon-background", "#525d6b");
   }
-  const open = button(null, () => openLocation(item.id), "open");
+  const open = button(null, () => item.kind === "file" ? showActions(item) : openLocation(item.id), "open");
   open.dataset.focus = `open-${item.id}`;
   const glyph = element("span", null, "glyph");
   glyph.setAttribute("aria-hidden", "true");
@@ -313,7 +370,8 @@ function card(item, searching) {
     ? [item.technology, item.capacity].filter(Boolean).join(" · ")
     : searching
       ? ancestors(item.parent).map(({ name }) => name).join(" › ")
-      : `${folderCount} ${folderCount === 1 ? "carpeta" : "carpetas"}`;
+      : item.kind === "file" ? "Archivo"
+        : `${folderCount} ${folderCount === 1 ? "carpeta" : "carpetas"}`;
   copy.append(element("span", item.name, "card-name"), element("span", caption, "meta"));
   open.append(glyph, copy);
   const more = button("•••", () => showActions(item), "more");
@@ -321,7 +379,7 @@ function card(item, searching) {
   more.setAttribute("aria-label", `Acciones de ${item.name}`);
   article.append(open);
   if (searching && item.kind === "folder") article.append(folderPickButton(item));
-  article.append(more);
+  if (item.kind !== "file") article.append(more);
   return article;
 }
 
@@ -473,8 +531,10 @@ function render() {
   if (!current && searchPanel.hidden) dockHome.setAttribute("aria-current", "page");
   else dockHome.removeAttribute("aria-current");
   folderComposer.hidden = !current || Boolean(query);
+  importButton.hidden = Boolean(current || query);
+  byId("new-file").hidden = folderAdd.hidden;
   renderPath(Boolean(query));
-  byId("section-title").textContent = query ? "Resultados" : current ? "Carpetas" : "Tus discos";
+  byId("section-title").textContent = query ? "Resultados" : current ? "Contenido" : "Tus discos";
   byId("count").textContent = snapshot ? String(results.length) : "";
   list.classList.toggle("rows", Boolean(query || current || !results.length));
   const emptyText = !configured ? "La conexión compartida está pendiente de configuración."
@@ -482,7 +542,9 @@ function render() {
       : query ? "No se encontraron coincidencias."
         : current ? "Esta ubicación aún no tiene carpetas." : "Agrega el primer disco del inventario.";
   const empty = folderComposer.hidden ? [element("p", emptyText, "empty")] : [];
-  list.replaceChildren(...(results.length ? results.map((item) => card(item, Boolean(query))) : empty));
+  list.replaceChildren(...(results.length ? results.slice(0, visibleLimit).map((item) => card(item, Boolean(query))) : empty));
+  loadMore.hidden = results.length <= visibleLimit;
+  loadMore.textContent = `Ver más (${Math.min(visibleLimit, results.length)} de ${results.length})`;
   if (focusKey) list.querySelector(`[data-focus="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
 }
 
@@ -568,10 +630,9 @@ function diskColorField(value) {
   return label;
 }
 
-function showEdit(item) {
-  const kind = item?.kind ?? (current ? "folder" : "disk");
-  const type = kind === "disk" ? "disco" : "carpeta";
-  const content = [field("Nombre", input("name", item?.name, 120, true))];
+function showEdit(item, kind = item?.kind ?? (current ? "folder" : "disk")) {
+  const type = { disk: "disco", folder: "carpeta", file: "archivo" }[kind];
+  const content = [field("Nombre", input("name", item?.name, kind === "disk" ? 120 : 255, true))];
   if (kind === "disk") {
     const technology = select("technology");
     for (const option of ["HDD", "SSD", "Otro"]) technology.add(new Option(option, option));
@@ -587,7 +648,7 @@ function showEdit(item) {
     capacity.value = standard ?? previousCapacity;
     content.push(field("Tecnología", technology), field("Capacidad", capacity), diskColorField(item?.color));
   }
-  showPanel(item ? `Editar ${type}` : kind === "disk" ? "Nuevo disco" : "Nueva carpeta",
+  showPanel(item ? `Editar ${type}` : kind === "folder" ? "Nueva carpeta" : `Nuevo ${type}`,
     content, "Guardar", {
       action: item ? "edit" : "create", id: item?.id ?? crypto.randomUUID(),
       kind, parent: item?.parent ?? current, version: item?.version,
@@ -605,7 +666,7 @@ function showMove(item) {
     const stack = [disk];
     while (stack.length) {
       const node = stack.pop();
-      if (excluded.has(node.id)) continue;
+      if (excluded.has(node.id) || node.kind === "file") continue;
       if (node.id !== item.parent) {
         group.append(new Option(node.kind === "disk"
           ? `Raíz de ${node.name}`
@@ -618,18 +679,18 @@ function showMove(item) {
   const content = destination.options.length > 1
     ? [element("p", item.name), field("Destino", destination)]
     : [element("p", "Agrega otra carpeta o disco para tener un destino disponible.")];
-  showPanel("Mover carpeta", content, destination.options.length > 1 ? "Mover aquí" : null,
+  showPanel(item.kind === "file" ? "Mover archivo" : "Mover carpeta", content, destination.options.length > 1 ? "Mover aquí" : null,
     { action: "move", id: item.id, version: item.version });
 }
 
 function showActions(item) {
   const actions = [button("Editar nombre y datos", () => showEdit(item), "action")];
-  if (item.kind === "folder") actions.push(button("Mover a otra ubicación", () => showMove(item), "action"));
+  if (item.kind !== "disk") actions.push(button("Mover a otra ubicación", () => showMove(item), "action"));
   actions.push(button("Eliminar del inventario", () => {
     const count = branch(item.id).size - 1;
     showPanel("Eliminar del inventario", [
       element("p", count
-        ? `Se eliminará «${item.name}» y ${count} ${count === 1 ? "carpeta de su interior" : "carpetas de su interior"}.`
+        ? `Se eliminará «${item.name}» y ${count} ${count === 1 ? "registro de su interior" : "registros de su interior"}.`
         : `Se eliminará «${item.name}».`),
     ], "Eliminar", { action: "delete", id: item.id, version: item.version, revision: snapshot.revision });
   }, "action danger"));
@@ -642,6 +703,7 @@ function openFolderComposer() {
   if (!current || !ready || savingFolder) return;
   if (!searchPanel.hidden) setSearch(false);
   folderAdd.hidden = true;
+  byId("new-file").hidden = true;
   folderForm.hidden = false;
   folderName.focus();
   requestAnimationFrame(keepEditorVisible);
@@ -652,6 +714,7 @@ function closeFolderComposer({ restoreFocus = false } = {}) {
   folderForm.reset();
   folderForm.hidden = true;
   folderAdd.hidden = false;
+  byId("new-file").hidden = false;
   folderError.hidden = true;
   if (restoreFocus) folderAdd.focus();
 }
@@ -725,6 +788,71 @@ folderForm.addEventListener("submit", async (event) => {
   }
 });
 
+function showInventoryImport() {
+  const file = element("input");
+  file.type = "file";
+  file.accept = ".json,application/json";
+  const preview = element("p");
+  showPanel("Importar inventario", [
+    field("Archivo JSON", file),
+    element("p", "Se añadirán las rutas al disco de destino. Las rutas que ya existan se conservan."),
+    preview,
+  ]);
+
+  file.addEventListener("change", async () => {
+    operation = null;
+    save.hidden = true;
+    error.hidden = true;
+    preview.textContent = "";
+    const source = file.files[0];
+    if (!source) return;
+    try {
+      if (source.size > 15_000_000) throw new Error("El JSON supera los 15 MB.");
+      let data;
+      try {
+        data = JSON.parse(await source.text());
+      } catch {
+        throw new Error("El archivo no contiene JSON válido.");
+      }
+      if (!file.isConnected || !dialog.open || file.files[0] !== source) return;
+      if (data?.schema !== "archivus.disk-inventory" || data.version !== 1 || typeof data.volume?.name !== "string"
+        || !data.volume.name.trim() || Array.from(data.volume.name.trim()).length > 120
+        || !Array.isArray(data.entries) || !data.entries.length || data.entries.length > 50000) {
+        throw new Error("Selecciona un JSON de inventario de Archivus con entre 1 y 50.000 rutas.");
+      }
+      const entries = data.entries.map((entry) => {
+        if (!entry || !["directory", "file"].includes(entry.type) || typeof entry.path !== "string" || !entry.path
+          || Array.from(entry.path).length > 4096 || entry.path.includes("\u0000")
+          || entry.path.split("/").some((part) => !part || part === "." || part === ".." || Array.from(part).length > 255)) {
+          throw new Error("El JSON contiene una ruta o un tipo de registro inválido.");
+        }
+        return { path: entry.path, type: entry.type };
+      });
+      const volume = data.volume.name.trim();
+      const disks = children.get(null) ?? [];
+      const sameDisk = disks.find((disk) => disk.name === volume);
+      const destination = select("disk_id");
+      destination.required = false;
+      if (!sameDisk) destination.add(new Option(`Crear disco «${volume}»`, ""));
+      for (const disk of disks) destination.add(new Option(disk.name, disk.id));
+      destination.value = sameDisk?.id ?? "";
+      const files = entries.filter(({ type }) => type === "file").length;
+      const folders = entries.length - files;
+      const summary = `${volume} · ${folders.toLocaleString("es-CO")} ${folders === 1 ? "carpeta" : "carpetas"} y ${files.toLocaleString("es-CO")} ${files === 1 ? "archivo" : "archivos"}`;
+      const content = [element("p", summary), field("Disco de destino", destination),
+        element("p", "Las rutas se guardarán en el inventario compartido y serán visibles para quienes tengan acceso a Archivus.")];
+      if (Array.isArray(data.errors) && data.errors.length) {
+        content.push(element("p", `El escaneo omitió ${data.errors.length} rutas con errores.`));
+      }
+      showPanel("Confirmar importación", content, "Importar rutas", { action: "import", entries, volume });
+    } catch (failure) {
+      if (!file.isConnected || !dialog.open || file.files[0] !== source) return;
+      error.textContent = failure.message;
+      error.hidden = false;
+    }
+  });
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!operation || saving || !ready) return;
@@ -733,10 +861,21 @@ form.addEventListener("submit", async (event) => {
   error.hidden = true;
   save.disabled = byId("cancel").disabled = byId("close").disabled = true;
   try {
-    applySnapshot(await rpc("archivus_write", { change: request }));
-    dialog.close();
-    byId("notice").textContent = ({ create: "Registro agregado.", edit: "Cambios guardados.",
-      move: "Carpeta movida con todo su contenido.", delete: "Registro eliminado." })[request.action];
+    if (request.action === "import") {
+      const result = await rpc("archivus_import", {
+        disk_id: request.disk_id || null, volume_name: request.volume, entries: request.entries,
+      }, 65000);
+      dialog.close();
+      byId("notice").textContent = result.added
+        ? `Importación completa: ${result.added.toLocaleString("es-CO")} rutas añadidas.`
+        : "El inventario ya incluía estas rutas.";
+      void refresh();
+    } else {
+      applySnapshot(await rpc("archivus_write", { change: request }));
+      dialog.close();
+      byId("notice").textContent = ({ create: "Registro agregado.", edit: "Cambios guardados.",
+        move: "Registro movido.", delete: "Registro eliminado." })[request.action];
+    }
   } catch (failure) {
     error.textContent = failure.message;
     error.hidden = false;
@@ -771,7 +910,18 @@ add.addEventListener("click", () => current ? openFolderComposer() : showEdit())
 viewPicks.addEventListener("click", showFolderPicks);
 byId("export-picks").addEventListener("click", exportFolderPicks);
 viewPicks.textContent = `Ver lista (${folderPicks.size})`;
-search.addEventListener("input", render);
+importButton.addEventListener("click", showInventoryImport);
+byId("new-file").addEventListener("click", () => showEdit(null, "file"));
+loadMore.addEventListener("click", () => {
+  const firstNew = visibleLimit;
+  visibleLimit += pageSize;
+  render();
+  list.children[firstNew]?.querySelector(".open")?.focus();
+});
+search.addEventListener("input", () => {
+  visibleLimit = pageSize;
+  render();
+});
 window.addEventListener("online", refresh);
 window.addEventListener("offline", () => setStatus(snapshot ? "Sin conexión · copia local" : "Sin conexión"));
 document.addEventListener("visibilitychange", () => { if (!document.hidden) void refresh(); });
@@ -779,6 +929,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) void
 if (snapshot) applySnapshot(snapshot);
 else render();
 if (configured) {
+  void loadLargeSnapshot();
   if (!navigator.onLine) setStatus(snapshot ? "Sin conexión · copia local" : "Sin conexión");
   void refresh();
   setInterval(() => { if (!document.hidden) void refresh(); }, 2000);

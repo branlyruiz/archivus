@@ -125,3 +125,7 @@ dialog::backdrop{background:#05141daa}
 .pick-clear{border-color:transparent;background:none;color:var(--danger);font-size:.875rem;font-weight:680}
 .pick-clear:hover{background:var(--accent-soft)}
 #editor > .dialog-actions:not(:has(> button:not([hidden]))){display:none}
+
+.section-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+#import-inventory,#new-file,#load-more{font-size:.875rem}
+#load-more{margin-top:12px}
