@@ -34,17 +34,17 @@ const cache = inventoryCache(cacheKey);
 const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
 const diskCapacities = ["500 GB", ...Array.from({ length: 8 }, (_, index) => `${index + 1} TB`)];
 const diskColors = {
-  rojo: ["Rojo", "#bd2439", "#fcecef"],
-  naranja: ["Naranja", "#a04609", "#fff0e4"],
-  amarillo: ["Amarillo", "#805d00", "#fff7db"],
-  verde: ["Verde", "#247044", "#eaf7ee"],
-  turquesa: ["Turquesa", "#08706e", "#e6f7f6"],
-  azul: ["Azul", "#245bb0", "#eaf2ff"],
-  morado: ["Morado", "#7344a3", "#f4edfc"],
-  rosa: ["Rosa", "#a5396d", "#fcecf4"],
-  gris: ["Gris / plateado", "#525d6b", "#f0f2f5"],
-  negro: ["Negro", "#222831", "#e9eaec"],
-  blanco: ["Blanco", "#fff", "#f4f5f6"],
+  rojo: ["Rojo", "#bc1637", "#ffabb1"],
+  naranja: ["Naranja", "#e9582d", "#ffad89", "dark"],
+  amarillo: ["Amarillo", "#f7b924", "#ffe179", "dark"],
+  verde: ["Verde", "#247c49", "#a5e3ab"],
+  turquesa: ["Turquesa", "#006c78", "#83e1e4"],
+  azul: ["Azul", "#185db5", "#9fcaff"],
+  morado: ["Morado", "#6537c6", "#c8b2fb"],
+  rosa: ["Rosa", "#9d2976", "#f7a9dd"],
+  gris: ["Gris / plateado", "#526478", "#bcc5d1"],
+  negro: ["Negro", "#0d1017", "#24262d"],
+  blanco: ["Blanco", "#fff", "#fff", "dark"],
 };
 const icons = {
   file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h4M9 13h6m-6 4h6"/>',
@@ -431,9 +431,11 @@ function card(item, searching) {
   const article = element("article", null, "card");
   const color = item.kind === "disk" ? getDiskColor(item.color) : null;
   if (color) {
-    article.style.setProperty("--disk-icon", color[1]);
-    article.style.setProperty("--disk-tint", color[2]);
-    if (item.color === "blanco") article.style.setProperty("--disk-icon-background", "#525d6b");
+    const [, chip, surface, iconTone] = color;
+    article.dataset.diskColor = item.color;
+    article.style.setProperty("--disk-chip", chip);
+    article.style.setProperty("--disk-tint", surface);
+    if (iconTone === "dark") article.style.setProperty("--disk-icon", "var(--text)");
   }
   const open = button(null, () => item.kind === "file" ? showActions(item) : openLocation(item.id), "open");
   open.dataset.focus = `open-${item.id}`;
